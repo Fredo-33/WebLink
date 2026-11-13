@@ -11,7 +11,7 @@ WebLink s'adresse à tout le monde : amateurs de radio en **Pmr446**, sans licen
 ## Sommaire
 
 - [Installation](#installation)
-- [Première connexion : le point d'accès Wifi](#première-connexion--le-point-daccès-wifi)
+- [Sans câble réseau : le point d'accès Wifi](#sans-câble-réseau--le-point-daccès-wifi)
 - [La page d'accueil](#la-page-daccueil)
 - [Personnalisation de l'interface](#personnalisation-de-linterface)
 - [Réseaux et réflecteurs](#réseaux-et-réflecteurs)
@@ -33,23 +33,21 @@ WebLink s'adresse à tout le monde : amateurs de radio en **Pmr446**, sans licen
 
 1. Téléchargez la dernière image (.zip ou .img.xz) sur **https://www.websdrbordeaux.fr**
 2. Gravez-la sur une carte micro Sd, par exemple avec Balena Etcher
-3. Insérez la carte dans l'Orange Pi Zero et alimentez-le
-4. Ouvrez l'interface : **http://weblink.local**
+3. Insérez la carte dans l'Orange Pi Zero, branchez-le sur votre box en **Rj45** (câble réseau) et alimentez-le
+4. Ouvrez l'interface depuis un appareil connecté à la même box : **http://weblink.local**
 
 L'image est volontairement la plus légère possible. Elle n'occupe pas toute la carte au départ : un bouton **Étendre** l'agrandit à toute la carte d'un clic, et une mise à jour le fait d'elle-même si la place vient à manquer.
 
-## Première connexion : le point d'accès Wifi
+## Sans câble réseau : le point d'accès Wifi
 
-Pas de câble, pas encore de Wifi configuré ? Le hotspot crée son propre réseau Wifi :
+Le hotspot se branche normalement en **Rj45** sur votre box. Si ce n'est pas possible, il crée son propre réseau Wifi pour que vous puissiez quand même le configurer :
 
 - Nom du réseau : **WebLink**
 - Mot de passe : **weblink1234**
 
-Connectez-y votre téléphone ou votre ordinateur, ouvrez l'interface, puis choisissez le Wifi de votre box. Une fois le hotspot connecté, le point d'accès s'éteint tout seul.
+Connectez-y votre téléphone ou votre ordinateur, ouvrez l'interface, puis connectez le hotspot au Wifi de votre box (par mot de passe ou par le bouton Wps). Une fois le hotspot connecté, le point d'accès s'éteint tout seul.
 
 Si le hotspot perd plus tard son Wifi, le point d'accès revient automatiquement : il reste toujours joignable, même après un changement de box.
-
-Le hotspot fonctionne aussi en **Rj45** (câble réseau).
 
 ## La page d'accueil
 
@@ -101,6 +99,8 @@ Le module radio se règle entièrement depuis l'interface, sans outil externe :
 - **Led** d'activité, clignotement activable
 
 ## Connexion Wifi
+
+Pour un hotspot qui ne peut pas être branché en Rj45 :
 
 - **scan** des réseaux disponibles, avec le niveau de signal
 - connexion par mot de passe, ou **par le bouton Wps de votre box** : un clic, un appui sur le bouton de la box dans les 2 minutes, et c'est connecté

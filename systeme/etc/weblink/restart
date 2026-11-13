@@ -1,0 +1,5 @@
+#!/bin/bash
+
+network=`cat /etc/weblink/network`
+
+/etc/weblink/restart.$network

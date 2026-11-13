@@ -1,0 +1,10 @@
+[Unit]
+Description=WebLink - Rechargement pilote Wifi au réveil
+After=suspend.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/sbin/modprobe xradio_wlan
+
+[Install]
+WantedBy=suspend.target

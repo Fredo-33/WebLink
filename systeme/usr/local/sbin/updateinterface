@@ -1,0 +1,251 @@
+#!/bin/bash
+
+set -e
+
+cleanup_exit() {
+  clean_gpio
+  systemctl restart weblink-led@normal
+  rm -f /tmp/updateProgress.txt
+}
+
+trap cleanup_exit EXIT SIGINT SIGTERM
+
+START_TIME=$(date +%s)
+[ -t 1 ] || exec >/dev/null 2>&1
+exec > >(tee -a /var/log/majLog.txt) 2>&1
+
+send_update() {
+  local message="$1"
+  local progress="$2"
+  local min_delay="${3:-2}"
+
+  echo "$message" >> /tmp/updateStatus.txt
+  echo "${progress}|${message}" > /tmp/updateProgress.tmp
+  mv /tmp/updateProgress.tmp /tmp/updateProgress.txt
+
+  sleep "$min_delay"
+}
+
+clean_gpio() {
+  local GPIO=6
+  local GPIO_VALUE="/sys/class/gpio/gpio${GPIO}/value"
+
+  if [ -f "$GPIO_VALUE" ]; then
+    echo 0 > "$GPIO_VALUE"
+  fi
+}
+
+restore_next() {
+  if [ -d "$DEST_DIR/.next.old" ]; then
+    rm -rf "$DEST_DIR/.next"
+    mv "$DEST_DIR/.next.old" "$DEST_DIR/.next"
+  fi
+  if [ -f "$DEST_DIR/version.txt.old" ]; then
+    mv -f "$DEST_DIR/version.txt.old" "$DEST_DIR/version.txt"
+  fi
+}
+
+echo "0|Initialisation" > /tmp/updateProgress.txt
+send_update "Démarrage mise à jour Interface .." "2" 1
+
+echo " "
+echo " "
+echo "- Lancement du script de mise à jour Interface - $(date +'%H:%M:%S %d/%m/%Y') -"
+echo " "
+
+clean_gpio
+systemctl restart weblink-led@maj
+
+UPDATE_BASE_URL="https://www.websdrbordeaux.fr/WebLink/"
+DEST_DIR="/opt/weblink"
+VERSION_FILE="${DEST_DIR}/version.txt"
+TEMP_LATEST_VERSION="/tmp/latestVersion.txt"
+
+CURRENT_VERSION=$(sed -n 3p "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]')
+CURRENT_NAME=$(sed -n 1p "$VERSION_FILE" 2>/dev/null | tr -d '\r')
+[ -z "$CURRENT_VERSION" ] && CURRENT_VERSION="0"
+
+sleep 1
+
+send_update "Vérification si nouvelle version .." "4" 1
+echo "Version actuelle : ${CURRENT_NAME:-inconnue} ($CURRENT_VERSION)"
+echo " "
+echo " "
+
+sleep 2
+
+echo "- Recherche dernière version dispo .."
+echo " "
+
+if ! curl -L --fail -s -o "$TEMP_LATEST_VERSION" "${UPDATE_BASE_URL}latestVersion.txt"; then
+  send_update "Fichier version serveur introuvable !!" "error" 5
+  echo "Impossible de contacter le serveur de mise à jour"
+  echo " "
+  exit 1
+fi
+sleep 1
+
+LATEST_VERSION=$(head -n 1 "$TEMP_LATEST_VERSION" | tr -d '[:space:]')
+rm -f "$TEMP_LATEST_VERSION"
+
+if ! [[ "$LATEST_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  send_update "Erreur : fichier version serveur invalide !!" "error" 5
+  echo "Fichier version serveur invalide : '$LATEST_VERSION'"
+  exit 1
+fi
+
+if [ "$LATEST_VERSION" = "$CURRENT_VERSION" ]; then
+  send_update "Interface déjà à jour !! \nV ${CURRENT_NAME:-$CURRENT_VERSION}" "uptodate" 4
+  echo "Aucune mise à jour dispo, la $CURRENT_VERSION est la plus récente"
+  echo " "
+  exit 0
+fi
+
+UPDATE_URL="${UPDATE_BASE_URL}WebLink.$LATEST_VERSION.tar.gz"
+TEMP_FILE="/opt/weblink/WebLink.$LATEST_VERSION.tar.gz"
+
+ARCHIVE_MB=$(curl -sIL "$UPDATE_URL" | awk 'tolower($1)=="content-length:" {v=$2} END {printf "%d", v/1048576}')
+FREE_MB=$(df -Pm "$DEST_DIR" | awk 'NR==2 {print $4}')
+FREE_INODES=$(df -Pi "$DEST_DIR" | awk 'NR==2 {print $4}')
+NEEDED_MB=$((ARCHIVE_MB * 4 + 64))
+NEEDED_INODES=4096
+
+if { [ "$FREE_MB" -lt "$NEEDED_MB" ] || [ "$FREE_INODES" -lt "$NEEDED_INODES" ]; } && [ -x /usr/local/sbin/weblink-etendre ]; then
+  send_update "Place insuffisante, extension de la carte micro Sd .." "6" 2
+  echo "Place insuffisante : ${FREE_MB} Mo et ${FREE_INODES} inodes libres, extension automatique de la carte"
+  /usr/local/sbin/weblink-etendre || true
+  echo " "
+  FREE_MB=$(df -Pm "$DEST_DIR" | awk 'NR==2 {print $4}')
+  FREE_INODES=$(df -Pi "$DEST_DIR" | awk 'NR==2 {print $4}')
+fi
+
+if [ "$FREE_INODES" -lt 512 ]; then
+  send_update "Erreur : carte micro Sd saturée (fichiers) !! \nUtilisez le bouton Étendre" "error" 5
+  echo "Inodes insuffisants : ${FREE_INODES} libres"
+  exit 1
+fi
+
+if [ "$FREE_MB" -lt "$NEEDED_MB" ]; then
+  send_update "Erreur : espace insuffisant sur la carte micro Sd !! \n${FREE_MB} Mo libres pour ${NEEDED_MB} Mo nécessaires" "error" 5
+  echo "Espace insuffisant : ${FREE_MB} Mo libres, ${NEEDED_MB} Mo nécessaires"
+  exit 1
+fi
+
+send_update "Nouvelle version disponible : V $LATEST_VERSION" "6" 2
+echo "Nouvelle version disponible --> V $LATEST_VERSION"
+echo " "
+echo " "
+
+sleep 2
+
+send_update "Récup de l'archive V $LATEST_VERSION" "8" 2
+echo "- Récup de l'archive V $LATEST_VERSION sur le serveur ' WebSdr Bordeaux '"
+echo " "
+
+sleep 2
+
+send_update "Téléchargement en cours .." "12" 1
+
+rm -f "$TEMP_FILE"
+
+if ! curl -L --fail -o "$TEMP_FILE" "$UPDATE_URL" -#; then
+  echo " "
+  send_update "Erreur téléchargement archive !!" "error" 5
+  echo "Erreur téléchargement archive .. Annulation !!"
+  rm -f "$TEMP_FILE"
+  exit 1
+fi
+echo " "
+
+send_update "Téléchargement Ok !!" "28" 2
+echo "Téléchargement Ok"
+echo " "
+echo " "
+
+send_update "Décompression de l'archive .." "36" 2
+echo "- Décompression et mise à jour des fichiers de la distrib .."
+echo " "
+cd "$DEST_DIR"
+
+STAGE="${DEST_DIR}.maj"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+
+if ! tar -xzf "$TEMP_FILE" -C "$STAGE" --strip-components=1 || [ ! -f "$STAGE/version.txt" ] || [ ! -f "$STAGE/server.js" ]; then
+  echo "Erreur décompression !! Archive incomplète ou place insuffisante, rien n'a été modifié"
+  send_update "Erreur décompression !! \nRien n'a été modifié, relancez la mise à jour" "error" 5
+  rm -rf "$STAGE"
+  rm -f "$TEMP_FILE"
+  exit 1
+fi
+
+rm -f "$TEMP_FILE"
+
+rm -rf "$DEST_DIR/.next.old"
+if [ -d "$DEST_DIR/.next" ]; then
+  mv "$DEST_DIR/.next" "$DEST_DIR/.next.old"
+fi
+cp -a "$VERSION_FILE" "$DEST_DIR/version.txt.old" 2>/dev/null || true
+
+(
+  cd "$STAGE"
+  find . -mindepth 1 -type d -print0 | while IFS= read -r -d '' d; do mkdir -p "$DEST_DIR/${d#./}"; done
+  find . ! -type d -print0 | while IFS= read -r -d '' f; do mv -f "$f" "$DEST_DIR/${f#./}"; done
+)
+rm -rf "$STAGE"
+
+send_update "Décompression Ok !!" "44" 2
+echo "Décompression Ok"
+echo " "
+echo " "
+
+if [ -f "$DEST_DIR/.next/PREBUILT" ] || [ -f "$DEST_DIR/.next.tgz" ]; then
+  send_update "Version précompilée, mise à jour des fichiers .." "62" 2
+  echo "- Version précompilée, pas de compilation .."
+else
+  send_update "Compilation de la distrib .." "58" 2
+  echo "- Compilation de la distrib .."
+  send_update "Compilation en cours .." "62" 3
+fi
+echo " "
+
+if ! make; then
+  send_update "Erreur compilation distrib" "error" 5
+  echo "Erreur compilation distrib .. Annulation !!"
+  restore_next
+  exit 1
+fi
+
+rm -rf "$DEST_DIR/.next.old"
+rm -f "$DEST_DIR/version.txt.old"
+
+send_update "Distrib prête !!" "82" 2
+echo " "
+echo "Distrib prête"
+echo " "
+
+if [ -f "$VERSION_FILE" ]; then
+  VERSION=$(sed -n 1p "$VERSION_FILE" | tr -d '\r')
+  send_update "Version : $VERSION" "84" 2
+  echo "Version : $VERSION"
+fi
+echo " "
+echo " "
+
+send_update "Redémarrage de WebLink .. \nEncore un chti peu de patience ;)" "86" 2
+echo "- Redémarrage de WebLink"
+echo " "
+systemctl stop weblink-web
+sleep 4
+
+send_update "Démarrage .. " "94" 3
+systemctl start weblink-web
+sleep 8
+
+
+echo " "
+echo " "
+send_update "Wouanegaine .. !!" "100" 3
+echo " Wouanegaine .. !! $(date +'%H:%M:%S %d/%m/%Y')"
+echo " "
+echo " "

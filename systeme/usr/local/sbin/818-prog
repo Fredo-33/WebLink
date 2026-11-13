@@ -1,0 +1,142 @@
+#!/usr/bin/python3
+
+import time
+import serial
+
+ser = serial.Serial(
+    port='/dev/ttyS2',
+    baudrate=9600,
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_ONE,
+    bytesize=serial.EIGHTBITS
+)
+
+if not ser.is_open:
+    ser.open()
+
+print('\r\n')
+print('       -- Programmation du module Sa818 -- \r\n')
+print('                  sur : ' + ser.portstr)
+
+key=1
+while key == 1:
+    print('    ')
+    print(' ----------------------------------------------- ')
+    print('    ')
+    print(' Rappel : 0 = Narrow  1 = Wide  o = oui  n = non')
+    print('    ')
+    print('    - - - - - - - - - - - - - - - - - - - - -    ')
+    print('    ')
+    print('    ')
+    Spacing=input('Choix Narrow ou Wide (0 ou 1)  : ')
+    print('    ')
+    FreqTx=input('Frequence Tx (xxx.xxxx) : ')
+    FreqRx=input('Frequence Rx (xxx.xxxx) : ')
+    print('    ')
+    tx_ctcss=input('Code Ctcss Tx (xxxx) : ')
+    rx_ctcss=input('Code Ctcss Rx (xxxx) : ')
+    print('    ')
+    squelch=input('Squelch (1-9) : ')
+    Volume=input('Volume (0-8)  : ')
+    print('    ')
+    PreEmphasis=input('Filtre Dephasage ? (o/n)  : ')
+    if PreEmphasis == "":
+        PreEmphasis="n"
+
+    HighPass=input('Filtre Passe Haut ? (o/n) : ')
+    if HighPass == "":
+        HighPass="n"
+
+    LowPass=input('Filtre Passe Bas ? (o/n)  : ')
+    if LowPass == "":
+        LowPass="n"
+
+    print('    ')
+    print('    ')
+    print('             Verification')
+    print(' - - - - - - - - - - - - - - - - - - - ')
+    print('     Narrow ou Wide : ' + Spacing + ' ')
+    print('       Frequence Tx : ' + FreqTx + ' ')
+    print('       Frequence Rx : ' + FreqRx + ' ')
+    print('      Tx CTCSS code : ' + tx_ctcss + ' ')
+    print('      Rx CTCSS code : ' + rx_ctcss + ' ')
+    print('            Squelch : ' + squelch + ' ')
+    print('             Volume : ' + Volume + ' ')
+    print('          Dephasage : ' + PreEmphasis + ' ')
+    print('  Filtre Passe Haut : ' + HighPass + ' ')
+    print('   Filtre Passe Bas : ' + LowPass + ' ')
+    print(' - - - - - - - - - - - - - - - - - - - ')
+    print('    ')
+
+    Answer=input('Est-ce correct ? (o/n - a=annuler) : ')
+    if Answer == "" or Answer == "o":
+          break
+
+    if Answer == "a":
+          exit()
+
+print('    ')
+print('    ')
+print('Envoie des informations .. !!')
+print('    ')
+print('Frequences Ctcss Squelch')
+
+cmd_group = "AT+DMOSETGROUP=" + Spacing + "," + FreqTx + "," + FreqRx + "," + tx_ctcss + "," + squelch + "," + rx_ctcss + "\r\n"
+ser.write(cmd_group.encode('utf-8'))
+time.sleep(1.00)
+
+raw_serial = ser.readline()
+response = raw_serial.decode('utf-8').strip()
+
+if response == '+DMOSETGROUP:1':
+    print("    Erreur, information invalide (" + response + "). verifier le format ..")
+    print(" Commande Envoye :")
+    print("        " + cmd_group)
+    exit()
+
+print("Reglage Volume - " + Volume + " ")
+cmd_vol = "AT+DMOSETVOLUME=" + Volume + "\r\n"
+ser.write(cmd_vol.encode('utf-8'))
+time.sleep(1.00)
+
+raw_serial = ser.readline()
+response = raw_serial.decode('utf-8').strip()
+
+if response == '+DMOSETVOLUME:1':
+    print("    Erreur, information invalide (" + response + ") ..")
+    print(" Commande Envoye :")
+    print("    " + cmd_vol)
+    exit()
+
+if PreEmphasis == "n":
+    PreEmpFilter='1'
+else:
+    PreEmpFilter='0'
+
+if HighPass == "n":
+    HPass='1'
+else:
+    HPass='0'
+
+if LowPass == "n":
+    LPass='1'
+else:
+    LPass='0'
+
+print('Reglages Filtres')
+cmd_filter = "AT+SETFILTER=" + PreEmpFilter + "," + HPass + "," + LPass + "\r\n"
+ser.write(cmd_filter.encode('utf-8'))
+time.sleep(1.00)
+
+raw_serial = ser.readline()
+response = raw_serial.decode('utf-8').strip()
+
+if response == '+DMOSETFILTER:1':
+    print("    Erreur, information invalide (" + response + ")...")
+    print(" Commande Envoye :")
+    print("    " + cmd_filter)
+    exit()
+
+print('    ')
+print("Programmation terminee !! Wouanegaine !!")
+time.sleep(4)

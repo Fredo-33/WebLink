@@ -1,0 +1,149 @@
+#!/usr/bin/python3
+
+# This is a simple serial programmer for the Sa818 Vhf/Uhf modules by w0anm / Frédo
+
+#### #### #### #### #### ####
+
+#  Rien  0000
+
+#  67.0  0001    82.5  0006
+#  71.9	 0002    85.4  0007
+#  74.4  0003    88.5  0008
+#  77.0	 0004    91.5  0009
+#  79.7  0005    94.8  0010
+
+#### #### #### #### #### ####
+
+import sys, getopt
+import time, serial
+
+def main(argv):
+    mode = '1'
+    group = '446.2000,446.2000,0001,2,0001'
+    volume = '2'
+    filter_setting = '0,0,0'
+    device = '/dev/ttyS2'
+
+    try:
+        opts, args = getopt.getopt(argv, "hd:m:g:v:f:")
+    except getopt.GetoptError:
+        print('\n818cli-prog [-d <device>] [-m <mode> -g <group> -v <volume> -f <filter>')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('\n818cli-prog [-d <device>] [-m <mode>] -g <group> [-v <volume>] [-f <filter>]')
+            print(' device = serial device, default /dev/ttyUSB0')
+            print('           e.g., -d /dev/ttyUSB0')
+            print(' mode   =  0 - 12.5 Khz Ch Space, 1 - 25 Khz Ch Space, default 0')
+            print('           e.g., -m 0')
+            print(' group =  <RxFreq>,<TxFreq>,<Rxct>,<Squelch>,<Txct>')
+            print('                   <RxFreq> and <TxFreq> format: xxx.xxxx ')
+            print('                   <Rxct> and <Txct> format:')
+            print('                             xxxx (tones) ')
+            print('                             xxx[N,I] (DTCS) ')
+            print('                   <Squelch> value is 0-8')
+            print('           e.g., -g 446.0500,446.0500,754N,6,754N ')
+            print(' volume = Value is  0-8, default 4')
+            print('           e.g., -v 4 ')
+            print(' filter = <pre-emphasis>,<low-pass>,<high-pass>')
+            print('           default is all filters disable (1,1,1)')
+            print('           to enable a filter, use 0 for the value ')
+            print('           to disable a filter, use 1 for the value')
+            print('           e.g., -f 0,0,0  (enables all filters) ')
+            print(' ')
+            print('Command line example:')
+            print('    818cli-prog -d /dev/ttyUSB0 -m 0 -g 446.0500,446.0500,754N,6,754N -v 4 -f 0,0,0 ')
+            sys.exit()
+        elif opt in ("-d"):
+            device = arg
+        elif opt in ("-g"):
+            group = arg
+        elif opt in ("-m"):
+            mode = arg
+        elif opt in ("-v"):
+            volume = arg
+        elif opt in ("-f"):
+            filter_setting = arg
+
+    ser = serial.Serial(
+        port=device,
+        baudrate=9600,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        bytesize=serial.EIGHTBITS
+    )
+
+    if not ser.is_open:
+        ser.open()
+
+    time.sleep(0.8)
+    print('\r\n')
+    print(' -- Programation du module Sa818 -- \r\n')
+    print('         sur : ' + ser.port)
+    time.sleep(0.8)
+
+    print('    ')
+    print('    ')
+    print('Envoie des informations .. !!')
+    print('    ')
+    time.sleep(0.8)
+    print('Frequences .. Ctcss .. Squelch ..')
+
+    cmd_group = "AT+DMOSETGROUP=" + mode + "," + group + "\r\n"
+    ser.write(cmd_group.encode('utf-8'))
+    time.sleep(1.00)
+
+    raw_serial = ser.readline().decode('utf-8', errors='ignore')
+    response = raw_serial.strip()
+
+    if response == '+DMOSETGROUP:1':
+        print("     Error, invalid information (" + response + "). Check input format..")
+        print(" Command Sent:")
+        print("           " + cmd_group)
+        print('          group usage:')
+        print('            <mode> = Channel Space (0 or 1)')
+        print('            <group> =  RxFreq,TxFreq,Rxct,Squelch,Txct')
+        print('            Using this format: ')
+        print('            xxx.xxxx,yyy.yyyy,rrrr,s,tttt\n')
+        print('          For example:')
+        print('             -g 446.0500,446.0500,754N,6,754N ')
+        print('                     RxFreq and TxFreq xxx.xxxx ')
+        print('                     Rxct and Txct format xxxx (tones) ')
+        print('                       or xxx[N,I] (DTCS) \n ')
+        print('            Squelch value range: 0-8')
+        exit()
+
+    print("Reglage Volume - " + volume + " ")
+    cmd_vol = "AT+DMOSETVOLUME=" + volume + "\r\n"
+    ser.write(cmd_vol.encode('utf-8'))
+    time.sleep(1.00)
+
+    raw_serial = ser.readline().decode('utf-8', errors='ignore')
+    response = raw_serial.strip()
+
+    if response == '+DMOSETVOLUME:1':
+        print("     Error, invalid information (" + response + ")...")
+        print(" Command Sent:")
+        print("           " + cmd_vol)
+        exit()
+
+    print('Reglages Filtres')
+    cmd_filter = "AT+SETFILTER=" + filter_setting + "\r\n"
+    ser.write(cmd_filter.encode('utf-8'))
+    time.sleep(1.00)
+
+    raw_serial = ser.readline().decode('utf-8', errors='ignore')
+    response = raw_serial.strip()
+
+    if response == '+DMOSETFILTER:1':
+        print("     Error, invalid information (" + response + ")...")
+        print(" Command Sent:")
+        print("           " + cmd_filter)
+        exit()
+
+    print('    ')
+    print('Programmation terminee !! Wouanegaine !!')
+    print('    ')
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

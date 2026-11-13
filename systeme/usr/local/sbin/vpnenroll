@@ -1,0 +1,368 @@
+#!/bin/bash
+
+set -uo pipefail
+
+CONF_DIR=/etc/weblinkVpn
+SERVER_CONF="$CONF_DIR/server.conf"
+STATE="$CONF_DIR/state.json"
+KEY="$CONF_DIR/private.key"
+NODEID_FILE="$CONF_DIR/nodeid"
+WG_CONF=/etc/wireguard/wg0.conf
+WG_UNIT=wg-quick@wg0
+AUTOCLOSE=weblink-vpn-autoclose
+POLL_TIMER=weblink-vpn-enrolement.timer
+VERSION_FILE=/opt/weblink/version.txt
+MAX_PENDING=$((48 * 3600))
+
+for bin in wg curl jq; do
+	command -v "$bin" >/dev/null 2>&1 || { echo "vpn-enroll: $bin manquant" >&2; exit 3; }
+done
+
+[ -r "$SERVER_CONF" ] || { echo "vpn-enroll: $SERVER_CONF introuvable" >&2; exit 3; }
+# shellcheck disable=SC1090
+. "$SERVER_CONF"
+
+: "${ENROLL_URL:?ENROLL_URL absent de server.conf}"
+: "${SERVER_PUBKEY:?SERVER_PUBKEY absent de server.conf}"
+: "${ENDPOINT:?ENDPOINT absent de server.conf}"
+: "${SERVER_VPN_IP:=10.66.0.1}"
+: "${VPN_MTU:=1380}"
+
+ST_STATUS=none
+ST_NODEID=""
+ST_LABEL=""
+ST_CODE=""
+ST_IP=""
+ST_MODE=off
+ST_HOURS=4
+ST_SINCE=0
+ST_MESSAGE=""
+ST_CHECK=0
+
+load_state() {
+	[ -f "$STATE" ] || return 0
+	ST_STATUS=$(jq -r '.status   // "none"' "$STATE" 2>/dev/null || echo none)
+	ST_NODEID=$(jq -r '.nodeId   // ""'    "$STATE" 2>/dev/null)
+	ST_LABEL=$(jq -r '.["label"] // ""'   "$STATE" 2>/dev/null)
+	ST_CODE=$(jq -r '.code       // ""'     "$STATE" 2>/dev/null)
+	ST_IP=$(jq -r '.ip           // ""'     "$STATE" 2>/dev/null)
+	ST_MODE=$(jq -r '.mode       // "off"'  "$STATE" 2>/dev/null)
+	ST_HOURS=$(jq -r '.hours     // 4'      "$STATE" 2>/dev/null)
+	ST_SINCE=$(jq -r '.since     // 0'      "$STATE" 2>/dev/null)
+	ST_MESSAGE=$(jq -r '.message // ""'     "$STATE" 2>/dev/null)
+	ST_CHECK=$(jq -r '.lastCheck // 0'     "$STATE" 2>/dev/null)
+}
+
+save_state() {
+	mkdir -p "$CONF_DIR"
+	local tmp="$STATE.tmp"
+	jq -n \
+		--arg status "$ST_STATUS" \
+		--arg nodeId "$ST_NODEID" \
+		--arg lbl "$ST_LABEL" \
+		--arg code "$ST_CODE" \
+		--arg ip "$ST_IP" \
+		--arg mode "$ST_MODE" \
+		--arg message "$ST_MESSAGE" \
+		--argjson hours "${ST_HOURS:-4}" \
+		--argjson since "${ST_SINCE:-0}" \
+		--argjson lastCheck "${ST_CHECK:-0}" \
+		--arg updated "$(date -Is)" \
+		'{"status":$status, "nodeId":$nodeId, "label":$lbl, "code":$code, "ip":$ip,
+		  "mode":$mode, "hours":$hours, "since":$since, "lastCheck":$lastCheck, "message":$message, "updated":$updated}' \
+		> "$tmp" && mv "$tmp" "$STATE"
+	chmod 644 "$STATE"
+}
+
+pubkey() {
+	if [ ! -s "$KEY" ]; then
+		mkdir -p "$CONF_DIR"
+		chmod 700 "$CONF_DIR"
+		( umask 077; wg genkey > "$KEY" )
+		chmod 600 "$KEY"
+	fi
+	wg pubkey < "$KEY"
+}
+
+node_id() {
+	if [ -s "$NODEID_FILE" ]; then
+		tr -d '\n' < "$NODEID_FILE"
+		return
+	fi
+
+	local mid="" serial="" mac="" seed="" d n a
+
+	[ -r /etc/machine-id ] && mid=$(tr -d '\n' < /etc/machine-id)
+	serial=$(awk '/^Serial/{print $3}' /proc/cpuinfo 2>/dev/null | tail -1)
+
+	for d in /sys/class/net/*; do
+		n=${d##*/}
+		[ "$n" = lo ] && continue
+		[ -e "$d/device" ] || continue
+		a=$(cat "$d/address" 2>/dev/null)
+		case "$a" in ''|00:00:00:00:00:00) continue ;; esac
+		mac="$a"
+		break
+	done
+
+	if [ -n "$serial" ] || [ -n "$mac" ]; then
+		seed="${mid}|${serial}|${mac}"
+	else
+		seed=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+	fi
+
+	local id
+	id="WL-$(printf '%s' "$seed" | sha256sum | cut -c1-12 | tr 'a-f' 'A-F')"
+
+	mkdir -p "$CONF_DIR"
+	printf '%s' "$id" > "$NODEID_FILE"
+	chmod 644 "$NODEID_FILE"
+	printf '%s' "$id"
+}
+
+pairing_code() {
+	tr -dc 'A-HJ-NP-Z2-9' < /dev/urandom | head -c 6
+}
+
+hotspot_version() {
+	[ -r "$VERSION_FILE" ] && tr -d '\n' < "$VERSION_FILE" || echo "inconnue"
+}
+
+write_wg_conf() {
+	mkdir -p /etc/wireguard
+	local tmp="$WG_CONF.tmp"
+	( umask 077; cat > "$tmp" <<EOF
+# Généré par vpn-enroll — ne pas modifier à la main
+[Interface]
+PrivateKey = $(cat "$KEY")
+Address = $ST_IP/32
+MTU = $VPN_MTU
+
+[Peer]
+PublicKey = $SERVER_PUBKEY
+Endpoint = $ENDPOINT
+AllowedIPs = $SERVER_VPN_IP/32
+PersistentKeepalive = 25
+EOF
+	)
+	chmod 600 "$tmp" && mv "$tmp" "$WG_CONF"
+}
+
+apply_mode() {
+	systemctl stop "$AUTOCLOSE.timer" 2>/dev/null
+	systemctl reset-failed "$AUTOCLOSE.service" 2>/dev/null
+	case "$ST_MODE" in
+		always)
+			systemctl enable --now "$WG_UNIT"
+			;;
+		temp)
+			systemctl disable "$WG_UNIT" 2>/dev/null
+			systemctl start "$WG_UNIT" && \
+			systemd-run --on-active="${ST_HOURS}h" --unit="$AUTOCLOSE" \
+				systemctl stop "$WG_UNIT"
+			;;
+		*)
+			systemctl disable --now "$WG_UNIT" 2>/dev/null
+			;;
+	esac
+}
+
+stop_polling() { systemctl stop "$POLL_TIMER" 2>/dev/null; systemctl disable "$POLL_TIMER" 2>/dev/null; }
+
+start_polling() {
+	if ! systemctl enable --now "$POLL_TIMER"; then
+		echo "vpn-enroll: impossible d'armer $POLL_TIMER — relance manuelle nécessaire" >&2
+	fi
+}
+
+do_request() {
+	local mode="${1:-always}" hours="${2:-4}" label="${3:-}"
+
+	case "$mode" in always|temp) ;; *) echo "vpn-enroll: mode invalide" >&2; exit 2 ;; esac
+	hours=$(echo "$hours" | tr -cd '0-9'); [ -n "$hours" ] || hours=4
+	[ "$hours" -ge 1 ] 2>/dev/null && [ "$hours" -le 24 ] || hours=4
+
+	label=$(printf '%s' "$label" | tr -d '\n\r\t"' | cut -c1-24)
+
+	load_state
+	ST_NODEID=$(node_id)
+
+	if [ "$ST_STATUS" = blocked ]; then
+		echo "vpn-enroll: accès définitivement retiré" >&2
+		exit 1
+	fi
+
+	if [ "$ST_STATUS" = approved ] && [ -s "$WG_CONF" ]; then
+		ST_MODE="$mode"; ST_HOURS="$hours"
+		[ -n "$label" ] && ST_LABEL="$label"
+		save_state
+		apply_mode
+		exit 0
+	fi
+
+	case "$ST_STATUS" in revoked|conflict|expired) ST_CODE="" ;; esac
+	[ -n "$ST_CODE" ] || ST_CODE=$(pairing_code)
+	[ -n "$label" ] && ST_LABEL="$label"
+	ST_MODE="$mode"
+	ST_HOURS="$hours"
+	ST_STATUS=pending
+	ST_MESSAGE=""
+	ST_SINCE=$(date +%s)
+	save_state
+
+	start_polling
+	do_poll
+}
+
+teardown() {
+	systemctl stop "$AUTOCLOSE.timer" 2>/dev/null
+	systemctl disable --now "$WG_UNIT" 2>/dev/null
+	rm -f "$WG_CONF"
+	ST_IP=""
+	ST_MODE=off
+}
+
+do_poll() {
+	load_state
+	[ -n "$ST_NODEID" ] || ST_NODEID=$(node_id)
+
+	case "$ST_STATUS" in
+		approved)
+			[ -s "$WG_CONF" ] || { ST_STATUS=pending; save_state; }
+			now=$(date +%s)
+			[ $(( now - ${ST_CHECK:-0} )) -lt 300 ] && exit 0
+			;;
+		pending) ;;
+		revoked|blocked)
+			exit 0
+			;;
+		*) stop_polling; exit 0 ;;
+	esac
+
+	if [ "$ST_SINCE" -gt 0 ] && [ $(( $(date +%s) - ST_SINCE )) -gt "$MAX_PENDING" ]; then
+		ST_STATUS=expired
+		ST_MESSAGE="Demande sans réponse depuis 48 h"
+		save_state
+		stop_polling
+		exit 0
+	fi
+
+	local pub resp http body ip status expected_net reason
+	pub=$(pubkey)
+	ST_CHECK=$(date +%s)
+
+	resp=$(curl -sS --max-time 20 --retry 1 -w '\n%{http_code}' \
+		-X POST "$ENROLL_URL/enroll" \
+		-H 'Content-Type: application/json' \
+		-d "$(jq -nc \
+			--arg nodeId "$ST_NODEID" \
+			--arg lbl "$ST_LABEL" \
+			--arg pubkey "$pub" \
+			--arg code "$ST_CODE" \
+			--arg version "$(hotspot_version)" \
+			'{"nodeId":$nodeId, "label":$lbl, "pubkey":$pubkey, "code":$code, "version":$version}')" \
+		2>/dev/null)
+
+	[ -n "$resp" ] || { echo "vpn-enroll: serveur injoignable" >&2; exit 1; }
+
+	http=$(echo "$resp" | tail -n1)
+	body=$(echo "$resp" | sed '$d')
+
+	case "$http" in
+		200)
+			local status ip
+			status=$(echo "$body" | jq -r '.status // "pending"')
+			if [ "$status" = approved ]; then
+				ip=$(echo "$body" | jq -r '.ip // ""')
+				expected_net=${SERVER_VPN_IP%.*}
+				if ! echo "$ip" | grep -qE "^$(echo "$expected_net" | sed 's/\./\\./g')\.[0-9]{1,3}$"; then
+					echo "vpn-enroll: adresse $ip hors du réseau attendu ${expected_net}.0/24" >&2
+					exit 1
+				fi
+				ST_IP="$ip"
+				ST_STATUS=approved
+				ST_MESSAGE=""
+				save_state
+				write_wg_conf
+				apply_mode
+				stop_polling
+			else
+				save_state
+			fi
+			;;
+		403)
+			reason=$(echo "$body" | jq -r '.status // "revoked"')
+			teardown
+			if [ "$reason" = blocked ]; then
+				ST_STATUS=blocked
+				ST_MESSAGE="Accès définitivement retiré par l'administrateur"
+			else
+				ST_STATUS=revoked
+				ST_MESSAGE="Accès retiré par l'administrateur"
+			fi
+			ST_CODE=""
+			save_state
+			stop_polling
+			;;
+		409)
+			ST_STATUS=conflict
+			ST_MESSAGE="Machine déjà enrôlée avec une autre clé"
+			save_state
+			stop_polling
+			;;
+		429)
+			echo "vpn-enroll: trop de requêtes, nouvelle tentative plus tard" >&2
+			exit 1
+			;;
+		400)
+			echo "vpn-enroll: requête refusée ($(echo "$body" | jq -r '.status // "?"'))" >&2
+			echo "vpn-enroll: envoyé nodeId=$ST_NODEID code=$ST_CODE" >&2
+			exit 1
+			;;
+		*)
+			echo "vpn-enroll: réponse serveur $http — $body" >&2
+			exit 1
+			;;
+	esac
+}
+
+do_cancel() {
+	load_state
+	[ -n "$ST_NODEID" ] || exit 0
+
+	local sent="$ST_CODE"
+	teardown
+	stop_polling
+	ST_STATUS=none
+	ST_CODE=""
+	ST_MESSAGE=""
+	ST_SINCE=0
+	save_state
+
+	if [ -n "$sent" ]; then
+		curl -fsS --max-time 15 -o /dev/null \
+			-X POST "$ENROLL_URL/cancel" \
+			-H 'Content-Type: application/json' \
+			-d "$(jq -nc --arg nodeId "$ST_NODEID" --arg code "$sent" \
+				'{"nodeId":$nodeId, "code":$code}')" 2>/dev/null \
+			|| echo "vpn-enroll: serveur non prévenu, annulation locale effectuée" >&2
+	fi
+	echo "vpn-enroll: demande annulée"
+}
+
+do_reset() {
+	stop_polling
+	systemctl stop "$AUTOCLOSE.timer" 2>/dev/null
+	systemctl disable --now "$WG_UNIT" 2>/dev/null
+	rm -f "$WG_CONF" "$KEY" "$STATE" "$NODEID_FILE"
+	echo "vpn-enroll: identité effacée"
+}
+
+case "${1:-status}" in
+	request) shift; do_request "$@" ;;
+	poll)    do_poll ;;
+	cancel)  do_cancel ;;
+	status)  load_state; [ -f "$STATE" ] && cat "$STATE" || echo '{"status":"none"}' ;;
+	reset)   do_reset ;;
+	*)       echo "usage: vpn-enroll request <always|temp> [heures] [libelle] | poll | cancel | status | reset" >&2; exit 2 ;;
+esac

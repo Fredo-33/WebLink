@@ -1,0 +1,14 @@
+[Unit]
+Description=WebLink - Nom d'hôte unique
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target systemd-networkd.service avahi-daemon.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/weblinkhostname
+
+[Install]
+WantedBy=sysinit.target

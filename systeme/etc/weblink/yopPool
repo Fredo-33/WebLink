@@ -1,0 +1,43 @@
+#!/bin/bash
+
+yopPool="YOP YOP2 YOP3 YOP4 YOP5 YOP6"
+yopDep="33"
+yopType="H"
+yopEtat="/etc/weblink/yop.dernier"
+
+yopEstDefaut() {
+  [ "$1" = "YOP" ]
+}
+
+yopDansPool() {
+  case " $yopPool " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
+yopIndicatif() {
+  local pool=($yopPool) nom
+  if [ "$yopRotation" = "1" ]; then
+    nom=$(cat "$yopEtat" 2>/dev/null)
+  fi
+  if ! yopDansPool "$nom"; then
+    nom=${pool[0]}
+  fi
+  echo "$nom" > "$yopEtat"
+  echo "$nom"
+}
+
+yopSuivant() {
+  local pool=($yopPool) actuel suivant i
+  suivant=${pool[0]}
+  actuel=$(cat "$yopEtat" 2>/dev/null)
+  for i in "${!pool[@]}"; do
+    if [ "${pool[i]}" = "$actuel" ]; then
+      suivant=${pool[(i + 1) % ${#pool[@]}]}
+      break
+    fi
+  done
+  echo "$suivant" > "$yopEtat"
+  echo "$suivant"
+}

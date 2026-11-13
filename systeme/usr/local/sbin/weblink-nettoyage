@@ -1,0 +1,27 @@
+#!/bin/bash
+echo " "
+echo "Préparation hotspot pour l'image :"
+echo " "
+echo " - Suppression clé Ssh .."
+rm -f /root/.ssh/authorized_keys
+echo " - Suppression clés Ssh hotspot ( recréées au prochain démarrage )"
+rm -f /etc/ssh/ssh_host_*
+echo " - Nettoyage journal système"
+journalctl --rotate >/dev/null 2>&1
+journalctl --vacuum-time=1s >/dev/null 2>&1
+echo " - Vidage fichiers logs"
+find /var/log -path /var/log/journal -prune -o -type f -exec truncate -s 0 {} \;
+[ -d /var/log.hdd ] && find /var/log.hdd -path /var/log.hdd/journal -prune -o -type f -exec truncate -s 0 {} \;
+echo " - Suppression cache compilation et restes de mise à jour"
+rm -rf /opt/weblink/.next/cache /opt/weblink/.next.old /root/.npm/_cacache /opt/weblink/systeme /opt/weblink/maj
+rm -f /opt/weblink/WebLink.*.tar.gz
+echo " - Nettoyage cache paquets"
+apt-get clean
+echo " - Réinitialisation identifiant machine"
+truncate -s 0 /etc/machine-id
+echo " - Effacement historique"
+> /root/.bash_history
+sync
+echo " "
+echo "Nettoyage terminé .. Hotspot prêt pour l'image !!"
+echo " "

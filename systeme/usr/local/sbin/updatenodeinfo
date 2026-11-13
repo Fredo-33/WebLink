@@ -1,0 +1,102 @@
+#!/bin/bash
+
+set -e
+
+cleanup_exit() {
+  LED_STATUS=$(grep '"ledEnabled":' /etc/weblink/config.json | cut -d: -f2 | tr -d '", ')
+  if [ "$LED_STATUS" = "false" ]; then
+    systemctl stop "weblink-led@*"
+  else
+    systemctl start weblink-led@normal
+  fi
+  rm -f /tmp/updateNodeInfoProgress.txt
+}
+
+trap cleanup_exit EXIT SIGINT SIGTERM
+
+[ -t 1 ] || exec >/dev/null 2>&1
+exec > >(tee -a /var/log/majNodeInfoLog.txt) 2>&1
+
+send_update() {
+  local message="$1"
+  local progress="$2"
+  local min_delay="${3:-2}"
+
+  echo "${progress}|${message}" > /tmp/updateNodeInfoProgress.tmp
+  mv /tmp/updateNodeInfoProgress.tmp /tmp/updateNodeInfoProgress.txt
+
+  sleep "$min_delay"
+}
+
+restore_backup() {
+  for f in nodeInfo.js nodeInfo2.js; do
+    if [ -f "/tmp/$f.bak" ]; then
+      mv "/tmp/$f.bak" "$LIB_DIR/$f"
+    fi
+  done
+}
+
+download_and_replace() {
+  local file_name="$1"
+  local dest_dir="$2"
+  local temp_file="/tmp/${file_name}.tmp"
+  local update_url="${UPDATE_BASE_URL}${file_name}"
+
+  if ! curl -L --fail -s -o "$temp_file" "$update_url"; then
+    send_update "Erreur téléchargement $file_name !!" "error" 5
+    echo "Erreur téléchargement $file_name .. Annulation !!"
+    rm -f "$temp_file"
+    restore_backup
+    exit 1
+  fi
+
+  mv "$temp_file" "$dest_dir/$file_name"
+  echo "Remplacement $file_name Ok dans $dest_dir"
+}
+
+systemctl start weblink-led@maj
+
+echo "0|Initialisation infos" > /tmp/updateNodeInfoProgress.txt
+send_update "Démarrage mise à jour Infos Nodes .." "8" 0
+
+echo " "
+echo " "
+echo "- Lancement du script de mise à jour Infos Nodes - $(date +'%H:%M:%S %d/%m/%Y') -"
+echo " "
+
+UPDATE_BASE_URL="https://www.websdrbordeaux.fr/WebLink/"
+LIB_DIR="/opt/weblink/lib"
+GUI_DIR="/opt/weblink"
+
+for f in nodeInfo.js nodeInfo2.js; do
+  cp -f "$LIB_DIR/$f" "/tmp/$f.bak" 2>/dev/null || true
+done
+
+send_update "Récup des Infos Nodes .." "24" 1
+echo "- Récup des Infos Nodes sur le serveur ' WebSdr Bordeaux '"
+echo " "
+
+download_and_replace "nodeInfo.js" "$LIB_DIR"
+download_and_replace "nodeInfo2.js" "$LIB_DIR"
+
+send_update "Téléchargement Ok !!" "46" 2
+echo "Téléchargement Ok"
+echo " "
+
+send_update "Mise à jour des Infos Nodes .." "72" 2
+echo "- Mise à jour des Infos Nodes .."
+echo " "
+
+if ! make -C "$GUI_DIR" nodeinfo; then
+  restore_backup
+  send_update "Erreur fichier Infos Nodes !!" "error" 5
+  echo "Erreur conversion Infos Nodes .. Annulation !!"
+  exit 1
+fi
+
+rm -f /tmp/nodeInfo.js.bak /tmp/nodeInfo2.js.bak
+
+echo " "
+echo " Wouanegaine .. !! $(date +'%H:%M:%S %d/%m/%Y')"
+echo " "
+send_update "Infos Nodes à jour !!" "100" 3

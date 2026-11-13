@@ -1,0 +1,18 @@
+[connection]
+id=Connexion Reseau Rj45
+uuid=cead20f0-40d6-3f8f-8eff-c9ee4ffd1cfe
+type=ethernet
+autoconnect-priority=-999
+interface-name=end0
+timestamp=1772523333
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+
+[proxy]

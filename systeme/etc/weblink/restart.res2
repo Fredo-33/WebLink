@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Reseau2 36
+
+LedEnabled=$(grep '"ledEnabled":' /etc/weblink/config.json | cut -d: -f2 | tr -d '", ')
+
+ledStatus() {
+  if [ "$LedEnabled" = "false" ]; then
+    systemctl stop "weblink-led@*"
+  else
+    systemctl start weblink-led@normal
+  fi
+}
+
+ledStatus
+
+if pgrep -x svxlink >/dev/null
+then
+  pkill -TERM svxlink
+  ledStatus
+fi
+
+echo "res2" > /etc/weblink/network
+
+rm /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+ln -s /usr/share/svxlink/sounds/fr_FR/RRF/Sres2.wav /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+
+rm -f /etc/weblink/svxlink.res2
+cat /etc/weblink/svxlink.cfg >/etc/weblink/svxlink.res2
+
+host=`cat /etc/weblink/config.json | grep host2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+dep=`cat /etc/weblink/config.json | grep departement2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+call=`cat /etc/weblink/config.json | grep callsign2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+type=`cat /etc/weblink/config.json | grep band_type2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+pass=`cat /etc/weblink/config.json | grep passres2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+port=`cat /etc/weblink/config.json | grep port2 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+
+echo "HOST=$host" >>/etc/weblink/svxlink.res2
+echo "CALLSIGN=($dep) $call $type">>/etc/weblink/svxlink.res2
+echo "AUTH_KEY=$pass" >>/etc/weblink/svxlink.res2
+echo "PORT=$port" >>/etc/weblink/svxlink.res2
+
+> /tmp/svxlink.log
+
+svxlink --daemon --logfile=/tmp/svxlink.log --pidfile=/var/run/svxlink.pid --runasuser=root --config=/etc/weblink/svxlink.res2
+
+sleep 1
+
+echo "10#" > /tmp/dtmf_uhf
+echo "10#" > /tmp/dtmf_vhf

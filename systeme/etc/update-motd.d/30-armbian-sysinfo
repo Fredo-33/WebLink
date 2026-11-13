@@ -1,0 +1,130 @@
+#!/bin/bash
+
+set -o pipefail
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+THIS_SCRIPT="sysinfo"
+
+MOTD_DISABLE=""
+PRIMARY_INTERFACE="eth0"
+PRIMARY_DIRECTION="rx"
+STORAGE="/dev/sda1"
+
+CPU_TEMP_LIMIT=60
+CPU_TEMP_OFFSET=0
+HDD_TEMP_LIMIT=60
+AMB_TEMP_LIMIT=40
+
+[[ -f /etc/default/armbian-motd ]] && . /etc/default/armbian-motd
+
+for f in ${MOTD_DISABLE}; do
+	[[ "$f" == "$THIS_SCRIPT" ]] && exit 0
+done
+
+if [[ -r /usr/lib/armbian/armbian-allwinner-battery ]]; then
+	. /usr/lib/armbian/armbian-allwinner-battery
+fi
+
+command -v ambienttemp >/dev/null 2>&1 || ambienttemp() { echo ""; }
+command -v batteryinfo  >/dev/null 2>&1 || batteryinfo() { :; }
+command -v getboardtemp >/dev/null 2>&1 || getboardtemp() { board_temp=""; }
+
+display() {
+	local name="$1" val="$2" red="$3" min="$4" unit="$5" after="$6"
+	[[ -z "$val" ]] && return 0
+	if awk -v v="$val" -v m="$min" -v inv="$name" 'BEGIN{
+		 if (v+0 <= 0) exit 1;
+		 if (inv=="Battery") exit !(v+0 >= m+0); else exit !(v+0 >= m+0)
+	}'; then
+		printf "%s: " "${name}"
+		if awk -v v="$val" -v r="$red" -v inv="$name" 'BEGIN{
+			 if (inv=="Battery") exit !(v+0 < r+0); else exit !(v+0 > r+0)
+		}'; then
+			printf "\e[0;91m%s" "$val"
+		else
+			printf "\e[0;92m%s" "$val"
+		fi
+		printf "%s\x1B[0m%s " "$unit" "$after"
+		return 1
+	fi
+	return 0
+}
+
+storage_info() {
+	local rootInfo storageInfo
+	rootInfo="$(df -hP /)"
+	root_usage="$(awk 'NR==2{gsub(/%/,"",$5); print $5}' <<<"$rootInfo")"
+	root_total="$(awk 'NR==2{print $2}' <<<"$rootInfo")"
+
+	if df -hP "$STORAGE" &>/dev/null; then
+		storageInfo="$(df -hP "$STORAGE" | awk 'NR==2')"
+		if [[ -n "$storageInfo" ]] && ! grep -q " $STORAGE " <<<"$rootInfo"; then
+			storage_usage="$(awk '{gsub(/%/,"",$5); print $5}' <<<"$storageInfo")"
+			storage_total="$(awk '{print $2}' <<<"$storageInfo")"
+			if command -v smartctl >/dev/null 2>&1; then
+				local disk="${STORAGE%[0-9]}"
+				storage_temp="$(smartctl -l scttempsts "$disk" 2>/dev/null \
+					| awk -F': *' '/Current Temperature:/ {print $(NF-1)}')"
+			fi
+		fi
+	fi
+}
+
+amb_temp="$(ambienttemp)"
+batteryinfo
+storage_info
+getboardtemp
+critical_load=80
+
+users="$(who 2>/dev/null | wc -l | tr -d ' ')"
+time="$(uptime -p 2>/dev/null | sed -e 's/^up //')"
+[[ -z "$time" ]] && time="$(LC_ALL=C uptime | sed -E 's/.*up ([^,]+), .*/\1/')"
+
+cpucount="$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)"
+read -r load1 _ < /proc/loadavg
+[[ "$load1" == 0.0* ]] && load1="0.10"
+load="$(awk -v l="$load1" -v c="$cpucount" 'BEGIN{printf("%.0f",(l/c)*100)}')"
+
+read -r mem_total_kb _ < <(awk '/MemTotal:/ {print $2" "$3; exit}' /proc/meminfo)
+mem_total_mb="$(( mem_total_kb / 1024 ))"
+mem_used_kb="$(awk '/MemTotal:/ {t=$2} /MemFree:/ {f=$2} /Buffers:/ {b=$2} /^Cached:/ {c=$2} END{printf("%d", t-f-b-c)}' /proc/meminfo)"
+memory_usage="$(awk -v u="$mem_used_kb" -v t="$mem_total_kb" 'BEGIN{printf("%.0f", (u/t)*100)}')"
+
+swap_total_mb="$(awk '/SwapTotal:/ {print int($2/1024)}' /proc/meminfo)"
+swap_used_mb="$(awk '/SwapFree:/ {sf=$2} /SwapTotal:/ {st=$2} END{print int((st-sf)/1024)}' /proc/meminfo)"
+if [[ "${swap_total_mb:-0}" -gt 0 ]]; then
+	swap_usage="$(awk -v u="$swap_used_mb" -v t="$swap_total_mb" 'BEGIN{printf("%3.0f", (u/t)*100)}')"
+else
+	swap_total_mb=0; swap_usage=0
+fi
+
+if (( mem_total_mb > 1000 )); then
+	memory_total="$(awk -v m="$mem_total_mb" 'BEGIN{printf("%.1fG", m/1024)}')"
+else
+	memory_total="${mem_total_mb}M"
+fi
+
+echo ""
+display " Load" "${load%% *}" "$critical_load" "0" "%" " "
+display " Temp Cpu" "$board_temp" "$CPU_TEMP_LIMIT" "0" "°C" ""
+display " Ram" "$memory_usage" "70" "0" "%" " ($memory_total)"
+echo ""
+
+display " Uptime" "$time" "0" "0" "" " "
+display " Users" "$users" "3" "2" "" ""
+display " Disk" "${root_usage:-0}" "90" "1" "%" " ($root_total)"
+echo ""
+
+if [[ -n "$PRIMARY_INTERFACE" ]] && command -v vnstat >/dev/null 2>&1; then
+    if vnstat -i "$PRIMARY_INTERFACE" &>/dev/null; then
+        line="$(LC_ALL=C vnstat -i "$PRIMARY_INTERFACE" --oneline 2>/dev/null)"
+        rx_raw="$(cut -d';' -f4 <<<"$line")"
+        tx_raw="$(cut -d';' -f5 <<<"$line")"
+
+        display "TX" "${tx_raw%% *}" 500 0 "${tx_raw#* }" ""
+        display "RX" "${rx_raw%% *}" 500 0 "${rx_raw#* }" ""
+        echo ""
+    fi
+fi
+
+exit 0

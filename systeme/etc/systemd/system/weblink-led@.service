@@ -1,0 +1,10 @@
+[Unit]
+Description=WebLink - Led en mode %i
+Conflicts=weblink-led@perroquet.service weblink-led@maj.service weblink-led@compil.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/clignotage.sh %i
+ExecStop=/bin/sh -c 'echo 0 > /sys/class/gpio/gpio6/value'
+Restart=always
+RestartSec=1

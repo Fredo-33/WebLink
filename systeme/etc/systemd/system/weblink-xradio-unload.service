@@ -1,0 +1,10 @@
+[Unit]
+Description=WebLink - Déchargement pilote Wifi avant veille
+Before=sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/sbin/rmmod xradio_wlan
+
+[Install]
+WantedBy=sleep.target

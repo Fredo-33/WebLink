@@ -1,0 +1,110 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ENV_FILE=${VPN_ENV:-/etc/vpn-server/vpn.env}
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+REGISTRY=${VPN_REGISTRY:-/etc/vpn-server/registry.json}
+WG_IFACE=${VPN_IFACE:-wg1}
+SERVER_KEY=${VPN_SERVER_KEY:-/etc/wireguard/${WG_IFACE}.key}
+WG_CONF=/etc/wireguard/${WG_IFACE}.conf
+NET=${VPN_NET:-172.22.0}
+LISTEN_PORT=${VPN_LISTEN_PORT:-51195}
+EXTRA_PEERS=${VPN_EXTRA_PEERS:-}
+HOSTS_FILE=/etc/hosts
+SSH_INCLUDE=${VPN_SSH_INCLUDE:-/etc/vpn-server/ssh_config}
+MARK_START="# >>> vpn-sync >>>"
+MARK_END="# <<< vpn-sync <<<"
+
+command -v jq >/dev/null || { echo "vpn-sync: jq manquant" >&2; exit 3; }
+command -v wg >/dev/null || { echo "vpn-sync: wireguard-tools manquant" >&2; exit 3; }
+[ -r "$REGISTRY" ] || { echo "vpn-sync: registre introuvable" >&2; exit 3; }
+[ -r "$SERVER_KEY" ] || { echo "vpn-sync: clé serveur introuvable" >&2; exit 3; }
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+chmod 600 "$tmp"
+
+{
+	echo "# Généré par vpn-sync le $(date -Is) — ne pas modifier à la main"
+	echo "# Les peers issus du registre sont regénérés à chaque approbation."
+	echo "[Interface]"
+	echo "Address    = ${NET}.1/24"
+	echo "ListenPort = ${LISTEN_PORT}"
+	echo "PostUp     = wg set %i private-key ${SERVER_KEY}"
+	echo "PostUp     = iptables -I FORWARD -i ${WG_IFACE} -j DROP"
+	echo "PostUp     = iptables -I FORWARD -o ${WG_IFACE} -j DROP"
+	echo "PostDown   = iptables -D FORWARD -i ${WG_IFACE} -j DROP"
+	echo "PostDown   = iptables -D FORWARD -o ${WG_IFACE} -j DROP"
+
+	if [ -n "$EXTRA_PEERS" ] && [ -r "$EXTRA_PEERS" ]; then
+		echo
+		echo "# ---- Peers statiques, gérés à la main ----"
+		cat "$EXTRA_PEERS"
+		echo "# ---- Fin des peers statiques ----"
+	fi
+
+	jq -r --arg d "$(date -Is)" '
+		to_entries
+		| map(select(.value.status == "approved" and .value.ip != null))
+		| sort_by(.value.index)
+		| .[]
+		| "\n[Peer]\n# " + (if (.value["label"] // "") != "" then .value["label"] + " (" + .key + ")" else .key end)
+			+ (if (.value.note // "") != "" then " — " + .value.note else "" end)
+			+ "\nPublicKey = " + .value.pubkey
+			+ "\nAllowedIPs = " + .value.ip + "/32"
+	' "$REGISTRY"
+} > "$tmp"
+
+install -m 600 "$tmp" "$WG_CONF"
+
+if ip link show "$WG_IFACE" >/dev/null 2>&1; then
+	wg syncconf "$WG_IFACE" <(wg-quick strip "$WG_IFACE")
+	echo "vpn-sync: configuration rechargée à chaud"
+else
+	echo "vpn-sync: $WG_IFACE inactive — démarrer avec : systemctl start wg-quick@${WG_IFACE}"
+fi
+
+peers=$(jq -r '[to_entries[] | select(.value.status=="approved")] | length' "$REGISTRY")
+echo "vpn-sync: ${peers} peer(s) approuvé(s)"
+
+ALIAS_JQ='
+	def clean: (. // "") | ascii_downcase | gsub("[^a-z0-9]+"; "-") | gsub("^-|-$"; "");
+	reduce (to_entries
+		| map(select(.value.status == "approved" and .value.ip != null))
+		| sort_by(.value.index))[] as $e ({used: {}, out: []};
+		(($e.value["label"] | clean) as $b
+		| (if $b == "" then ($e.key | ascii_downcase) else $b end) as $c
+		| (if .used[$c] then $c + "-" + ($e.key[-4:] | ascii_downcase) else $c end) as $n
+		| .used[$n] = true
+		| .out += [$n + " " + $e.value.ip]))
+	| .out[]
+'
+
+aliases=$(jq -r "$ALIAS_JQ" "$REGISTRY")
+
+hosts_block=$(printf '%s\n' "$aliases" | awk 'NF {print $2 "  " $1}')
+
+tmph=$(mktemp)
+sed "/$MARK_START/,/$MARK_END/d" "$HOSTS_FILE" > "$tmph"
+{
+	echo "$MARK_START"
+	echo "$hosts_block"
+	echo "$MARK_END"
+} >> "$tmph"
+cat "$tmph" > "$HOSTS_FILE"
+rm -f "$tmph"
+
+mkdir -p "$(dirname "$SSH_INCLUDE")"
+tmps=$(mktemp)
+{
+	echo "# Généré par vpn-sync — à inclure via : Include $SSH_INCLUDE"
+	printf '%s\n' "$aliases" | awk 'NF {printf "\nHost %s\n  HostName %s\n  User root\n  StrictHostKeyChecking accept-new\n", $1, $2}'
+
+} > "$tmps"
+install -m 644 "$tmps" "$SSH_INCLUDE"
+rm -f "$tmps"
+
+echo "vpn-sync: hosts et raccourcis ssh mis à jour"

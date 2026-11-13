@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Bac à Sable 34
+
+LedEnabled=$(grep '"ledEnabled":' /etc/weblink/config.json | cut -d: -f2 | tr -d '", ')
+
+ledStatus() {
+  if [ "$LedEnabled" = "false" ]; then
+    systemctl stop "weblink-led@*"
+  else
+    systemctl start weblink-led@normal
+  fi
+}
+
+ledStatus
+
+if pgrep -x svxlink >/dev/null
+then
+  pkill -TERM svxlink
+  ledStatus
+fi
+
+echo "bac" > /etc/weblink/network
+
+rm /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+ln -s /usr/share/svxlink/sounds/fr_FR/RRF/Sbac.wav /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+
+rm -f /etc/weblink/svxlink.bac
+cat /etc/weblink/svxlink.cfg >/etc/weblink/svxlink.bac
+
+pass=`cat /etc/weblink/config.json | grep passres1 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+dep=`cat /etc/weblink/config.json | grep departement1 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+call=`cat /etc/weblink/config.json | grep callsign1 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+type=`cat /etc/weblink/config.json | grep band_type1 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+
+echo "HOST=pmr.websdrbordeaux.fr" >>/etc/weblink/svxlink.bac
+echo "CALLSIGN=($dep) $call $type" >>/etc/weblink/svxlink.bac
+echo "AUTH_KEY=$pass" >>/etc/weblink/svxlink.bac
+echo "PORT=5302" >>/etc/weblink/svxlink.bac
+
+> /tmp/svxlink.log
+
+svxlink --daemon --logfile=/tmp/svxlink.log --pidfile=/var/run/svxlink.pid --runasuser=root --config=/etc/weblink/svxlink.bac
+
+sleep 1
+
+echo "10#" > /tmp/dtmf_uhf
+echo "10#" > /tmp/dtmf_vhf

@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Rrf 96
+
+LedEnabled=$(grep '"ledEnabled":' /etc/weblink/config.json | cut -d: -f2 | tr -d '", ')
+
+ledStatus() {
+  if [ "$LedEnabled" = "false" ]; then
+    systemctl stop "weblink-led@*"
+  else
+    systemctl start weblink-led@normal
+  fi
+}
+
+ledStatus
+
+if pgrep -x svxlink >/dev/null
+then
+  pkill -TERM svxlink
+  ledStatus
+fi
+
+echo "rrf" > /etc/weblink/network
+
+rm /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+ln -s /usr/share/svxlink/sounds/fr_FR/RRF/Srrf.wav /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+
+rm -f /etc/weblink/svxlink.rrf
+cat /etc/weblink/svxlink.cfg >/etc/weblink/svxlink.rrf
+
+dep=`cat /etc/weblink/config.json | grep departement5 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+call=`cat /etc/weblink/config.json | grep callsign5 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+type=`cat /etc/weblink/config.json | grep band_type5 | awk -F ":" '{ $1 =""; print $0}' | tr -d '", '`
+
+ham=$(printf '%s' "$call" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9/')
+if [ -n "$ham" ]; then
+  sed -i -e "/^\[SimplexLogic\]/,/^\[/ s|^CALLSIGN=.*|CALLSIGN=$ham|" \
+         -e "/^\[SimplexLogic\]/,/^\[/ s|^TYPE=Simplex$|TYPE=Simplex\nIDENT_RADIOAMATEUR=1|" \
+         -e "/^\[SimplexLogic\]/,/^\[/ s|^SHORT_IDENT_INTERVAL=.*|SHORT_IDENT_INTERVAL=15|" \
+         -e "/^\[LocationInfo\]/,/^\[/ s|^CALLSIGN=\([A-Z]*\)-.*|CALLSIGN=\1-$ham|" /etc/weblink/svxlink.rrf
+fi
+
+echo "HOST=rrf3.f5nlg.ovh" >>/etc/weblink/svxlink.rrf
+echo "CALLSIGN=($dep) $call $type" >>/etc/weblink/svxlink.rrf
+echo "AUTH_KEY=Magnifique123456789!" >>/etc/weblink/svxlink.rrf
+echo "PORT=5300" >>/etc/weblink/svxlink.rrf
+
+> /tmp/svxlink.log
+
+svxlink --daemon --logfile=/tmp/svxlink.log --pidfile=/var/run/svxlink.pid --runasuser=root --config=/etc/weblink/svxlink.rrf
+
+sleep 1
+
+echo "10#" > /tmp/dtmf_uhf
+echo "10#" > /tmp/dtmf_vhf

@@ -1,0 +1,9 @@
+[Unit]
+Description=WebLink - Vpn re-résolution de l'endpoint
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+#!/bin/sh
+
+getip() { ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}'; }
+
+while true; do
+  IP=$(getip)
+  if [ -n "$IP" ]; then
+    PRIS=$(avahi-resolve -4 -n weblink.local 2>/dev/null | awk '{print $2}')
+    if [ -z "$PRIS" ] || [ "$PRIS" = "$IP" ]; then
+      avahi-publish -a -R weblink.local "$IP" >/dev/null 2>&1 &
+      PID=$!
+      while kill -0 $PID 2>/dev/null; do
+        sleep 30
+        [ "$(getip)" != "$IP" ] && kill $PID
+      done
+    fi
+  fi
+  sleep 120
+done

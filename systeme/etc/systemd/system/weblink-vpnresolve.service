@@ -1,0 +1,6 @@
+[Unit]
+Description=WebLink - Vpn re-résolution de l'endpoint
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpnresolve

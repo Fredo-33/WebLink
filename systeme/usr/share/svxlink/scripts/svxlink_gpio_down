@@ -1,0 +1,11 @@
+#!/bin/sh
+
+GPIO_CONF="/etc/svxlink/gpio.conf"
+[ -r "$GPIO_CONF" ] && . "$GPIO_CONF"
+
+for pin in $GPIO_IN_HIGH $GPIO_IN_LOW $GPIO_OUT_HIGH $GPIO_OUT_LOW; do
+  if [ -e $GPIO_PATH/$pin ]; then
+    pinnum=$(echo "$pin" | sed 's/^[^0-9]*\([0-9][0-9]*\).*$/\1/')
+    echo $pinnum > $GPIO_PATH/unexport
+  fi
+done

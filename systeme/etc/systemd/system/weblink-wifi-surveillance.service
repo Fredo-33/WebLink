@@ -1,0 +1,13 @@
+[Unit]
+Description=WebLink - Surveillance point d'accès Wifi
+After=NetworkManager.service weblink-wifi-secours.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/weblinkwifiwatch.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

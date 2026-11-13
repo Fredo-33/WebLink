@@ -1,0 +1,6 @@
+path-exclude=/lib/firmware/*
+path-exclude=/usr/lib/firmware/*
+path-include=/lib/firmware/xr819/*
+path-include=/usr/lib/firmware/xr819/*
+path-include=/lib/firmware/regulatory.db*
+path-include=/usr/lib/firmware/regulatory.db*

@@ -1,0 +1,12 @@
+#!/bin/bash
+IF=wg0
+CONF=/etc/wireguard/$IF.conf
+[ -e /sys/class/net/$IF ] || exit 0
+[ -r "$CONF" ] || exit 0
+EP=$(awk -F' *= *' '/^Endpoint/{print $2; exit}' "$CONF")
+PUB=$(wg show $IF peers | head -n1)
+[ -n "$EP" ] && [ -n "$PUB" ] || exit 0
+HS=$(wg show $IF latest-handshakes | awk -v p="$PUB" '$1==p{print $2}')
+NOW=$(date +%s)
+[ $((NOW - ${HS:-0})) -gt 150 ] || exit 0
+wg set $IF peer "$PUB" endpoint "$EP"

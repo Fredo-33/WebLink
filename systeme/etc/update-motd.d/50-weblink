@@ -1,0 +1,24 @@
+#!/bin/bash
+
+FICHIER_VERSION="/opt/weblink/version.txt"
+
+if [ -r "$FICHIER_VERSION" ]; then
+    VERSION=$(sed -n 1p "$FICHIER_VERSION" | tr -d '\r')
+    DATE=$(sed -n 2p "$FICHIER_VERSION" | tr -d '\r')
+    [ -z "$DATE" ] && DATE=$(date -r "$FICHIER_VERSION" +%d/%m/%Y)
+else
+    VERSION="inconnue"
+    DATE="?"
+fi
+
+cat <<EOF
+
+
+> WebLink V $VERSION <
+
+Par Frédo  Le $DATE
+
+
+Menu: tapez -> weblink
+
+EOF

@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Perroquet 95
+
+LedEnabled=$(grep '"ledEnabled":' /etc/weblink/config.json | cut -d: -f2 | tr -d '", ')
+
+ledStatus() {
+  if [ "$LedEnabled" = "false" ]; then
+    systemctl stop "weblink-led@*"
+  else
+    systemctl start weblink-led@perroquet
+  fi
+}
+
+systemctl stop "weblink-led@*"
+
+ledStatus
+
+if pgrep -x svxlink >/dev/null
+then
+  pkill -TERM svxlink
+  ledStatus
+fi
+
+echo "default" > /etc/weblink/network
+
+rm /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+ln -s /usr/share/svxlink/sounds/fr_FR/RRF/name.wav /usr/share/svxlink/sounds/fr_FR/PropagationMonitor/name.wav
+
+rm -f /etc/weblink/svxlink.conf
+cat /etc/weblink/svxlink.cfg >/etc/weblink/svxlink.conf
+
+sed -i "/^\[SimplexLogic\]/,/^\[/ s/^MODULES=\(.*\)/\0,ModuleParrot/" /etc/weblink/svxlink.conf > /dev/null 2>&1
+
+> /tmp/svxlink.log
+
+svxlink --daemon --logfile=/tmp/svxlink.log --pidfile=/var/run/svxlink.pid --runasuser=root --config=/etc/weblink/svxlink.conf
+
+sleep 1
+
+echo "1#" > /tmp/dtmf_uhf
+echo "1#" > /tmp/dtmf_vhf

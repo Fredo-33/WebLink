@@ -1,0 +1,23 @@
+#!/bin/sh
+
+for i in $(seq 1 50); do
+  [ -e /sys/class/net/end0/address ] && break
+  sleep 0.2
+done
+MAC=$(cat /sys/class/net/end0/address 2>/dev/null)
+[ -n "$MAC" ] || exit 0
+NEW="weblink-$(echo "$MAC" | tr -d ':' | tail -c 3)"
+hostname "$NEW"
+
+if [ "$(cat /etc/hostname 2>/dev/null)" != "$NEW" ]; then
+  echo "$NEW" > /etc/hostname.new
+  sync
+  mv /etc/hostname.new /etc/hostname
+fi
+
+LINE=$(printf '127.0.1.1\t%s' "$NEW")
+if ! grep -qxF "$LINE" /etc/hosts || ! tr -d '\000' < /etc/hosts | cmp -s - /etc/hosts; then
+  { tr -d '\000' < /etc/hosts | grep -v '127\.0\.1\.1'; echo "$LINE"; } > /etc/hosts.new
+  sync
+  mv /etc/hosts.new /etc/hosts
+fi

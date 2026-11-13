@@ -1,0 +1,15 @@
+[Unit]
+Description=WebLink - Démarrage SvxLink
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=90
+ExecStartPre=/bin/sh -c '[ -d /sys/class/gpio/gpio7 ] || echo 7 > /sys/class/gpio/export; echo out > /sys/class/gpio/gpio7/direction'
+ExecStartPre=/bin/sh -c '[ -d /sys/class/gpio/gpio10 ] || echo 10 > /sys/class/gpio/export; echo in > /sys/class/gpio/gpio10/direction'
+ExecStart=/etc/weblink/restart
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=WebLink - Interface
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node /opt/weblink/server.js
+WorkingDirectory=/opt/weblink
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=weblink
+User=root
+Environment=NODE_ENV=production
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

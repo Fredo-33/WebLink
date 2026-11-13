@@ -1,0 +1,11 @@
+[Unit]
+Description=WebLink - Supervision module SA818
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/sbin/sa818.py
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

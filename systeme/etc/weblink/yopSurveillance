@@ -1,0 +1,40 @@
+#!/bin/bash
+
+. /etc/weblink/yopPool
+
+logSvx=/tmp/svxlink.log
+pauseRelance=20
+pausePoolComplet=60
+remiseAZero=300
+
+taillePool=$(wc -w <<< "$yopPool")
+derniere=0
+essais=0
+
+touch "$logSvx"
+
+tail -n0 -F "$logSvx" 2>/dev/null | while read -r ligne; do
+  case "$ligne" in
+    *"Access denied"*|*"Already connected"*) ;;
+    *) continue ;;
+  esac
+
+  reseau=$(cat /etc/weblink/network 2>/dev/null)
+  grep -Eq '^CALLSIGN=\([0-9]+\) YOP[0-9]* ' "/etc/weblink/svxlink.$reseau" 2>/dev/null || continue
+
+  maintenant=$(date +%s)
+  (( maintenant - derniere < pauseRelance )) && continue
+  (( maintenant - derniere > remiseAZero )) && essais=0
+
+  essais=$((essais + 1))
+  if (( essais > taillePool )); then
+    logger -t yop "Tous les comptes du pool sont occupés, nouvel essai dans ${pausePoolComplet}s"
+    sleep "$pausePoolComplet"
+    essais=1
+  fi
+
+  nom=$(yopSuivant)
+  logger -t yop "Compte refusé, passage à $nom"
+  yopRotation=1 /etc/weblink/restart >/dev/null 2>&1
+  derniere=$(date +%s)
+done

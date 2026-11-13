@@ -1,0 +1,11 @@
+[Unit]
+Description=WebLink - Rotation compte YOP
+After=network.target
+
+[Service]
+ExecStart=/etc/weblink/yopSurveillance
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=WebLink - Point d'accès Wifi secours
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/weblinkwififallback.sh
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

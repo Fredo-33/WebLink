@@ -1,0 +1,86 @@
+#!/bin/bash
+
+export LC_ALL=C
+JOURNAL=/var/log/weblink-etendre.log
+ETAT=/run/weblink-etendre.etat
+MARGE_SECTEURS=32768
+
+exec 8>/run/weblink-etendre.verrou
+if ! flock -n 8; then
+  echo "Extension déjà en cours"
+  exit 2
+fi
+
+: > "$JOURNAL"
+echo encours > "$ETAT"
+
+dire() { echo "$*" | tee -a "$JOURNAL"; }
+
+fin() {
+  echo "$1" > "$ETAT"
+  dire "$2"
+  exit "$3"
+}
+
+RACINE=$(findmnt -n -o SOURCE /)
+PART=$(basename "$RACINE")
+[ -e "/sys/class/block/$PART/partition" ] || fin erreur "Erreur : partition système introuvable ($RACINE)" 1
+DISQUE_NOM=$(lsblk -n -o PKNAME "$RACINE" | head -n1)
+DISQUE="/dev/$DISQUE_NOM"
+NUM=$(cat "/sys/class/block/$PART/partition")
+DEBUT=$(cat "/sys/class/block/$PART/start")
+TAILLE=$(cat "/sys/class/block/$PART/size")
+TOTAL=$(cat "/sys/block/$DISQUE_NOM/size")
+
+dire "Carte micro Sd : $(( TOTAL / 2048 )) Mo"
+dire "Partition système : $RACINE, $(( TAILLE / 2048 )) Mo"
+
+for p in /sys/block/"$DISQUE_NOM"/"$DISQUE_NOM"p*; do
+  [ -e "$p/start" ] || continue
+  if [ "$(cat "$p/start")" -gt "$DEBUT" ]; then
+    fin erreur "Erreur : une autre partition suit la partition système, extension impossible" 1
+  fi
+done
+
+taille_fs() {
+  tune2fs -l "$RACINE" 2>/dev/null | awk -F: '/^Block count/ {gsub(/ /, "", $2); n = $2} /^Block size/ {gsub(/ /, "", $2); b = $2} END {printf "%d", n * b / 512}'
+}
+
+LIBRE=$(( TOTAL - DEBUT - TAILLE ))
+if [ "$LIBRE" -ge "$MARGE_SECTEURS" ]; then
+  dire "Place récupérable : $(( LIBRE / 2048 )) Mo"
+  dire " "
+  sfdisk -d "$DISQUE" > /root/partitions-avant-extension.sfdisk 2>/dev/null
+
+  dire "- Agrandissement de la partition .."
+  if ! echo ", +" | sfdisk -N "$NUM" --force --no-reread "$DISQUE" >> "$JOURNAL" 2>&1; then
+    fin erreur "Erreur : agrandissement de la partition impossible" 1
+  fi
+
+  NOUVELLE=$(sfdisk -d "$DISQUE" 2>/dev/null | awk -v d="$RACINE" '$1 == d { for (i = 1; i <= NF; i++) if ($i == "size=") { gsub(",", "", $(i + 1)); print $(i + 1) } }')
+  if ! partx -u -n "$NUM" "$DISQUE" >> "$JOURNAL" 2>&1; then
+    [ -n "$NOUVELLE" ] && resizepart "$DISQUE" "$NUM" "$NOUVELLE" >> "$JOURNAL" 2>&1
+  fi
+  sleep 2
+
+  if [ "$(cat "/sys/class/block/$PART/size")" -le "$TAILLE" ]; then
+    touch /var/run/resize2fs-reboot
+    fin erreur "Le noyau n'a pas pris en compte la nouvelle taille : redémarrez le hotspot puis relancez Étendre" 1
+  fi
+fi
+
+ECART=$(( $(cat "/sys/class/block/$PART/size") - $(taille_fs) ))
+if [ "$ECART" -lt "$MARGE_SECTEURS" ]; then
+  dire "Espace libre sur le système : $(df -h / | awk 'NR==2 {print $4}')"
+  fin max "Carte déjà à sa taille maximale !!" 0
+fi
+
+dire "- Agrandissement du système de fichiers .."
+if ! resize2fs "$RACINE" >> "$JOURNAL" 2>&1; then
+  fin erreur "Erreur : resize2fs a échoué" 1
+fi
+sync
+
+dire " "
+dire "Nouvelle taille : $(df -h / | awk 'NR==2 {print $2 " dont " $4 " libres"}')"
+fin ok "Extension terminée !!" 0

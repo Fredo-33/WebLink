@@ -1,0 +1,2 @@
+path-exclude=/lib/modules/*/kernel/drivers/media/*
+path-exclude=/usr/lib/modules/*/kernel/drivers/media/*

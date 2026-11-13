@@ -1,0 +1,12 @@
+[Unit]
+Description=WebLink - Relance périodique enrôlement Vpn
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+RandomizedDelaySec=30s
+AccuracySec=10s
+Unit=weblink-vpn-enrolement.service
+
+[Install]
+WantedBy=timers.target

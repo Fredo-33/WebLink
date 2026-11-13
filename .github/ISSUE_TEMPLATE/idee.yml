@@ -1,0 +1,31 @@
+name: Proposer une idée
+description: Une amélioration ou une nouvelle fonction pour WebLink
+title: "[Idée] "
+labels: ["idée"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Toutes les idées sont les bienvenues. Décrivez ce qui vous manque, et comment vous l'imaginez.
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Qu'est-ce qui vous manque ?
+      description: Le besoin ou la situation qui vous fait penser à cette idée
+    validations:
+      required: true
+  - type: textarea
+    id: idee
+    attributes:
+      label: Votre idée
+      description: Comment vous l'imaginez dans l'interface ou sur le hotspot
+    validations:
+      required: true
+  - type: dropdown
+    id: usage
+    attributes:
+      label: Vous utilisez WebLink en
+      options:
+        - Pmr446
+        - Radioamateur licencié
+        - Les deux

@@ -1,10 +1,56 @@
-# WebLink
+<p align="center">
+  <img src="appli/static/logoRond2.png" width="190" alt="WebLink">
+</p>
+
+<h1 align="center">WebLink</h1>
+
+<p align="center">
+  <b>La distribution clé en main pour hotspots SvxLink sur Orange Pi Zero</b><br>
+  Pmr446 · Radioamateurs · Interface web complète · Mises à jour sans refaire de carte
+</p>
+
+<p align="center">
+  <a href="https://github.com/Fredo-33/WebLink/releases/latest"><img src="https://img.shields.io/github/v/release/Fredo-33/WebLink?label=version&color=22c55e&style=flat-square" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Gpl%20v3-3b82f6?style=flat-square" alt="Licence Gpl v3"></a>
+  <img src="https://img.shields.io/badge/Orange%20Pi%20Zero-Armbian-f97316?style=flat-square" alt="Orange Pi Zero · Armbian">
+  <img src="https://img.shields.io/badge/SvxLink-r%C3%A9flecteurs-ef4444?style=flat-square" alt="SvxLink">
+  <img src="https://img.shields.io/badge/interface-bureau%20%26%20mobile-a855f7?style=flat-square" alt="Bureau et mobile">
+</p>
+
+<p align="center">
+  <a href="https://www.websdrbordeaux.fr"><b>Télécharger l'image</b></a> ·
+  <a href="https://github.com/Fredo-33/WebLink/releases"><b>Versions</b></a> ·
+  <a href="CHANGELOG.md"><b>Nouveautés</b></a> ·
+  <a href="https://github.com/Fredo-33/WebLink/issues/new/choose"><b>Signaler un problème</b></a>
+</p>
+
+---
 
 **WebLink** est une distribution complète et prête à l'emploi pour hotspots SvxLink sur **Orange Pi Zero**, basée sur Armbian.
 
 On grave la carte, on branche, et tout se règle depuis une interface web claire, sur ordinateur comme sur téléphone, à l'adresse **http://weblink.local**. Aucune ligne de commande n'est nécessaire.
 
 WebLink s'adresse à tout le monde : amateurs de radio en **Pmr446**, sans licence, comme **radioamateurs licenciés**, sur n'importe quel réseau SvxLink.
+
+## En un coup d'œil
+
+| | |
+|---|---|
+| 🔌 **Prêt en quelques minutes** | on grave, on branche en Rj45, on ouvre http://weblink.local |
+| 🎛️ **Tout depuis le navigateur** | réseaux, module radio, Wifi, annonces : zéro ligne de commande |
+| 🔄 **Mises à jour en un clic** | interface et système, sans jamais regraver la carte |
+| 📡 **Pmr446 et radioamateurs** | indicatif, annonces et Aprs pour les licenciés |
+| 🩺 **Diagnostic complet** | qualité de la liaison, activité du réseau, journaux, alerte de place |
+| 🛟 **Assistance à distance** | uniquement à votre demande, et vous le coupez quand vous voulez |
+| 🎨 **Interface personnalisable** | thèmes, blocs déplaçables, animations, version mobile |
+
+## Aperçu
+
+<p align="center">
+  <img src="captures/1-accueil.png" width="100%" alt="WebLink">
+  <img src="captures/2-status.png" width="49%" alt="WebLink">
+  <img src="captures/3-configuration.png" width="49%" alt="WebLink">
+</p>
 
 ---
 
@@ -23,6 +69,7 @@ WebLink s'adresse à tout le monde : amateurs de radio en **Pmr446**, sans licen
 - [Mises à jour sans refaire de carte](#mises-à-jour-sans-refaire-de-carte)
 - [Commandes Dtmf](#commandes-dtmf)
 - [Version mobile](#version-mobile)
+- [Signaler un problème, proposer une idée](#signaler-un-problème-proposer-une-idée)
 - [Contenu du dépôt](#contenu-du-dépôt)
 - [Origine, crédits et licence](#origine-crédits-et-licence)
 - [Contact](#contact)
@@ -140,7 +187,7 @@ Tout l'état du hotspot sur une seule page :
 - mise à jour séparée des **infos nodes** (noms, villes, relais)
 - une mise à jour interrompue ne laisse jamais le hotspot à moitié à jour, et la carte s'agrandit d'elle-même si la place manque
 
-Plus besoin de regraver la carte à chaque nouvelle version.
+Plus besoin de regraver la carte à chaque nouvelle version. Le détail de chaque version est dans le [journal des versions](CHANGELOG.md) et sur la page [Versions](https://github.com/Fredo-33/WebLink/releases).
 
 ## Commandes Dtmf
 
@@ -149,6 +196,12 @@ Une page dédiée envoie les commandes Dtmf (changement de salon, fonctions du r
 ## Version mobile
 
 Toutes les pages existent en **version téléphone**, pensée pour le tactile : accueil, configuration, status, Dtmf, liens et infos.
+
+## Signaler un problème, proposer une idée
+
+Un souci, une idée d'amélioration ? Ouvrez un [ticket](https://github.com/Fredo-33/WebLink/issues/new/choose) : un formulaire vous guide.
+
+Pour un problème, pensez au **diagnostic** de la page Status : un clic le copie, il suffit de le coller dans le ticket.
 
 ---
 
@@ -159,6 +212,7 @@ Toutes les pages existent en **version téléphone**, pensée pour le tactile : 
 | `appli/` | l'interface web (Next.js), installée dans /opt/weblink sur le hotspot |
 | `systeme/` | les fichiers système de la distribution (services weblink-*, scripts, configuration SvxLink…), rangés à leur place dans l'arborescence du hotspot |
 | `systeme.liste` | la liste des fichiers système livrés |
+| `CHANGELOG.md` | le journal des versions |
 
 La météo de l'interface utilise OpenWeatherMap : pour compiler l'interface vous-même, mettez votre propre clé dans `appli/lib/meteo.js`.
 
@@ -178,3 +232,5 @@ Le nom **WebLink** désigne la distribution officielle publiée ici : une versio
 
 - Site : **https://www.websdrbordeaux.fr**
 - Mail : **contact@websdrbordeaux.fr**
+
+<p align="center"><sub>Fait avec passion à Bordeaux · 73 et bon trafic</sub></p>

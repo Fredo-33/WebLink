@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTheme } from './themeContext';
 
+const nomVersion = id => {
+  const m = /^(\d+)TB?\d*$/i.exec(id || '');
+  return m ? `${m[1]} Turbo` : id;
+};
+
 export default function Nouveautes({ hasUpdate, onInstall }) {
   const { theme } = useTheme();
   const [ouvert, setOuvert] = useState(false);
@@ -49,8 +54,8 @@ export default function Nouveautes({ hasUpdate, onInstall }) {
               {etat === 'pret' && versions.map(v => (
                 <div key={v.id} className="version">
                   <div className="versionTete">
-                    <span className="versionNom">{v.id}</span>
-                    <span className="versionDate">{v.date}</span>
+                    <span className="versionNom">{nomVersion(v.id)}</span>
+                    <span className="versionDate">- {v.date}</span>
                     <span className={`etiquette ${donnees.aJour ? 'etiquetteInstallee' : ''}`}>{donnees.aJour ? 'Installée' : 'Nouvelle'}</span>
                   </div>
                   {v.sections.map((s, i) => (

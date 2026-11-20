@@ -5,6 +5,7 @@ FICHIER_VERSION="/opt/weblink/version.txt"
 if [ -r "$FICHIER_VERSION" ]; then
     VERSION=$(sed -n 1p "$FICHIER_VERSION" | tr -d '\r')
     DATE=$(sed -n 2p "$FICHIER_VERSION" | tr -d '\r')
+    ID=$(sed -n 3p "$FICHIER_VERSION" | tr -d '[:space:]')
     [ -z "$DATE" ] && DATE=$(date -r "$FICHIER_VERSION" +%d/%m/%Y)
 else
     VERSION="inconnue"
@@ -16,7 +17,7 @@ cat <<EOF
 
 > WebLink V $VERSION <
 
-Par Frédo  Le $DATE
+Par Frédo  Le $DATE${ID:+  · $ID}
 
 
 Menu: tapez -> weblink

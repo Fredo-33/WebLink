@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pmr.websdrbordeaux.fr/telechargement"><b>Télécharger l'image</b></a> ·
+  <a href="https://pmr.websdrbordeaux.fr/telechargements"><b>Télécharger l'image</b></a> ·
   <a href="https://github.com/Fredo-33/WebLink/releases"><b>Versions</b></a> ·
   <a href="CHANGELOG.md"><b>Nouveautés</b></a> ·
   <a href="https://github.com/Fredo-33/WebLink/issues/new/choose"><b>Signaler un problème</b></a>
@@ -79,8 +79,8 @@ WebLink s'adresse à tout le monde : amateurs de radio en **Pmr446**, sans licen
 ## Installation
 
 1. Téléchargez la dernière image (.zip ou .img.xz) sur l'une des pages de téléchargement :
-   - **https://pmr.websdrbordeaux.fr/telechargement**
-   - **https://f6zcf.websdrbordeaux.fr/telechargement**
+   - **https://pmr.websdrbordeaux.fr/telechargements**
+   - **https://f6zcf.websdrbordeaux.fr/telechargements**
 2. Gravez-la sur une carte micro Sd, par exemple avec Balena Etcher
 3. Insérez la carte dans l'Orange Pi Zero, branchez-le sur votre box en **Rj45** (câble réseau) et alimentez-le
 4. Ouvrez l'interface depuis un appareil connecté à la même box : **http://weblink.local**

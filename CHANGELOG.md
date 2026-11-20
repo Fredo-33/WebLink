@@ -2,7 +2,7 @@
 
 Toutes les versions de WebLink, de la plus récente à la plus ancienne.
 
-Les images se téléchargent sur **https://pmr.websdrbordeaux.fr/telechargement** ou **https://f6zcf.websdrbordeaux.fr/telechargement**, et les hotspots déjà installés se mettent à jour depuis la page Status.
+Les images se téléchargent sur **https://pmr.websdrbordeaux.fr/telechargements** ou **https://f6zcf.websdrbordeaux.fr/telechargements**, et les hotspots déjà installés se mettent à jour depuis la page Status.
 
 ---
 

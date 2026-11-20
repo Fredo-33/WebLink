@@ -776,8 +776,8 @@ app
 
 		server.post('/api/wifi/connect', async (req, res) => {
 			try {
-				const { ssid, password } = req.body || {};
-				const result = await config.connectWifi(ssid, password);
+				const { ssid, password, hidden } = req.body || {};
+				const result = await config.connectWifi(ssid, password, hidden === true);
 				res.json(result);
 			} catch (error) {
 				if (error.userMessage) return res.status(400).json({ error: error.message });

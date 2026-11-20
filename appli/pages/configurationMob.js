@@ -805,10 +805,10 @@ class Configuration extends React.Component {
       .catch(() => {});
   }
 
-  async handleConnectWifi(ssid, password) {
+  async handleConnectWifi(ssid, password, hidden = false) {
     Notif.info(`Ajout de ${ssid} ..`);
     try {
-      const response = await fetch('/api/wifi/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssid, password }) });
+      const response = await fetch('/api/wifi/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssid, password, hidden }) });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw Object.assign(new Error(body.error || ''), { shown: !!body.error });
@@ -860,11 +860,12 @@ class Configuration extends React.Component {
   }
 
   submitWifiPassword = () => {
-    const ssid = this.state.selectedSsid.trim();
+    const manual = this.state.wifiManual;
+    const ssid = manual ? this.state.selectedSsid.trim() : this.state.selectedSsid;
     const password = this.state.wifiPasswordInput;
-    if (!ssid || wifiPassError(password)) return;
+    if (!ssid.trim() || wifiPassError(password)) return;
     this.setState({ showWifiPasswordPopup: false, wifiPasswordInput: '', wifiManual: false });
-    this.handleConnectWifi(ssid, password);
+    this.handleConnectWifi(ssid, password, manual);
   }
 
   toggleWifiHelpPopup() { this.setState(prev => ({ showWifiPopup: !prev.showWifiPopup })); }

@@ -218,16 +218,19 @@ async function isApActive() {
 }
 module.exports.isApActive = isApActive
 
+function decodeIwSsid(raw) {
+  const text = raw.replace(/^\s*SSID: ?/, '').replace(/\\x([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+  return Buffer.from(text, 'latin1').toString('utf8')
+}
+
 function parseScan(stdout) {
   const networks = stdout.split(/\r?\n/)
     .filter(line => line.trim() !== '' && line.includes(':'))
     .map(line => {
       const parts = line.split(':')
-      return {
-        ssid: parts[0] || 'Inconnu',
-        signal: parseInt(parts[1]) || 0,
-        security: parts[2] || 'None'
-      }
+      const security = parts.pop() || 'None'
+      const signal = parseInt(parts.pop()) || 0
+      return { ssid: parts.join(':') || 'Inconnu', signal, security }
     })
 
   const uniqueNetworks = []
@@ -294,7 +297,7 @@ async function scanWithIw() {
       const dbm = parseFloat(line.split(/\s+/)[1])
       cur.signal = Math.max(0, Math.min(100, Math.round(2 * (dbm + 100))))
     } else if (cur && line.startsWith('SSID:')) {
-      cur.ssid = line.slice(5).trim()
+      cur.ssid = decodeIwSsid(raw)
     } else if (cur && (line.startsWith('RSN:') || line.startsWith('WPA:'))) {
       cur.security = 'WPA'
     }
@@ -343,10 +346,10 @@ module.exports.scanAndListWifi = async function scanAndListWifi() {
   return parseScan(cached)
 }
 
-async function saveProfile(ssid, password) {
+async function saveProfile(ssid, password, hidden = false) {
   await nmcli(['connection', 'delete', ssid]).catch(() => {})
   const args = ['connection', 'add', 'type', 'wifi', 'ifname', WLAN, 'con-name', ssid,
-    'ssid', ssid, 'autoconnect', 'yes', '802-11-wireless.hidden', 'yes']
+    'ssid', ssid, 'autoconnect', 'yes', '802-11-wireless.hidden', hidden ? 'yes' : 'no']
   if (password) args.push('wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', password)
   await nmcli(args)
   await syncDisk()
@@ -455,11 +458,11 @@ async function startFromAp(conName, ssid) {
   return { success: true, pending: true, mode: 'blind' }
 }
 
-module.exports.connectWifi = async function connectWifi(ssid, password) {
+module.exports.connectWifi = async function connectWifi(ssid, password, hidden = false) {
   if (!ssid || ssid === AP_NAME) throw userError('Nom de réseau invalide')
   if (wpsRun) throw userError('Une opération Wps est en cours')
   if (password && (password.length < 8 || password.length > 63)) throw userError('Mot de passe de 8 à 63 caractères')
-  await saveProfile(ssid, password)
+  await saveProfile(ssid, password, !!hidden)
 
   if (await isApActive()) return startFromAp(ssid, ssid)
 
@@ -480,7 +483,7 @@ module.exports.switchWifi = async function switchWifi(name) {
   if (wpsRun) throw userError('Une opération Wps est en cours')
 
   if (await isApActive()) {
-    const ssid = (await nmcli(['-g', '802-11-wireless.ssid', 'connection', 'show', name]).catch(() => '')).trim() || name
+    const ssid = (await nmcli(['-g', '802-11-wireless.ssid', 'connection', 'show', name]).catch(() => '')).replace(/\r?\n$/, '') || name
     return startFromAp(name, ssid)
   }
   await nmcli(['connection', 'up', name], 90000)
@@ -562,7 +565,7 @@ function parseBss(out) {
     if (!cur) continue
     if (line.startsWith('freq:')) cur.chan = freqToChan(Math.round(parseFloat(line.slice(5))))
     else if (line.startsWith('signal:')) cur.signal = parseFloat(line.split(/\s+/)[1]) || -100
-    else if (line.startsWith('SSID:')) cur.ssid = line.slice(5).trim()
+    else if (line.startsWith('SSID:')) cur.ssid = decodeIwSsid(raw)
     else if (line.startsWith('WPS:')) cur.wps = true
     if (/Selected Registrar:\s*0x0*1\b/i.test(line)) cur.selected = true
     if (/Device Password ID:\s*4\b/.test(line)) cur.pbc = true

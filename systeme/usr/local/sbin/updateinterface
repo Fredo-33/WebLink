@@ -64,6 +64,8 @@ TEMP_LATEST_VERSION="/tmp/latestVersion.txt"
 CURRENT_VERSION=$(sed -n 3p "$VERSION_FILE" 2>/dev/null | tr -d '[:space:]')
 CURRENT_NAME=$(sed -n 1p "$VERSION_FILE" 2>/dev/null | tr -d '\r')
 [ -z "$CURRENT_VERSION" ] && CURRENT_VERSION="0"
+INDICATIF=$(jq -r '.callsign1 // ""' /etc/weblink/config.json 2>/dev/null | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Za-z0-9._-' | cut -c1-24)
+AGENT="WebLink/${CURRENT_VERSION}${INDICATIF:+ ($INDICATIF)}"
 
 sleep 1
 
@@ -77,7 +79,7 @@ sleep 2
 echo "- Recherche dernière version dispo .."
 echo " "
 
-if ! curl -L --fail -s -o "$TEMP_LATEST_VERSION" "${UPDATE_BASE_URL}latestVersion.txt"; then
+if ! curl -L --fail -s -A "$AGENT" -o "$TEMP_LATEST_VERSION" "${UPDATE_BASE_URL}latestVersion.txt"; then
   send_update "Fichier version serveur introuvable !!" "error" 5
   echo "Impossible de contacter le serveur de mise à jour"
   echo " "
@@ -104,7 +106,7 @@ fi
 UPDATE_URL="${UPDATE_BASE_URL}WebLink.$LATEST_VERSION.tar.gz"
 TEMP_FILE="/opt/weblink/WebLink.$LATEST_VERSION.tar.gz"
 
-ARCHIVE_MB=$(curl -sIL "$UPDATE_URL" | awk 'tolower($1)=="content-length:" {v=$2} END {printf "%d", v/1048576}')
+ARCHIVE_MB=$(curl -sIL -A "$AGENT" "$UPDATE_URL" | awk 'tolower($1)=="content-length:" {v=$2} END {printf "%d", v/1048576}')
 FREE_MB=$(df -Pm "$DEST_DIR" | awk 'NR==2 {print $4}')
 FREE_INODES=$(df -Pi "$DEST_DIR" | awk 'NR==2 {print $4}')
 NEEDED_MB=$((ARCHIVE_MB * 4 + 64))
@@ -148,7 +150,7 @@ send_update "Téléchargement en cours .." "12" 1
 
 rm -f "$TEMP_FILE"
 
-if ! curl -L --fail -o "$TEMP_FILE" "$UPDATE_URL" -#; then
+if ! curl -L --fail -A "$AGENT" -o "$TEMP_FILE" "$UPDATE_URL" -#; then
   echo " "
   send_update "Erreur téléchargement archive !!" "error" 5
   echo "Erreur téléchargement archive .. Annulation !!"

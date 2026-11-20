@@ -2,7 +2,17 @@
 
 Toutes les versions de WebLink, de la plus récente à la plus ancienne.
 
-Les images se téléchargent sur **https://www.websdrbordeaux.fr**, et les hotspots déjà installés se mettent à jour depuis la page Status.
+Les images se téléchargent sur **https://pmr.websdrbordeaux.fr/telechargement** ou **https://f6zcf.websdrbordeaux.fr/telechargement**, et les hotspots déjà installés se mettent à jour depuis la page Status.
+
+---
+
+## 6T12 · 20/11/2026
+
+### Corrections
+
+- Wifi : connexion possible aux réseaux dont le nom commence ou finit par un espace
+- Wifi : les réseaux choisis dans la liste ne sont plus enregistrés comme réseaux masqués
+- Petites corrections par-ci, par-là
 
 ---
 

@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Télécharger WebLink
-    url: https://www.websdrbordeaux.fr
+    url: https://pmr.websdrbordeaux.fr/telechargement
     about: Les images prêtes à graver
   - name: Contacter Frédo
     url: mailto:contact@websdrbordeaux.fr
